@@ -30,7 +30,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("OpenGLレンダラーの作成に失敗しました: %v", err)
 	}
-	defer openglRenderer.(*renderer.OpenGLRenderer).Destroy()
+	// 安全な型アサーション
+	if oglRenderer, ok := openglRenderer.(*renderer.OpenGLRenderer); ok {
+		defer oglRenderer.Destroy()
+	}
 
 	fmt.Println("=== TinyEngine Phase 2.3: 基本図形描画ギャラリー ===")
 	fmt.Println("様々な図形とカラフルな色を表示します")
@@ -42,8 +45,11 @@ func main() {
 }
 
 func runShapeGallery(r tinyengine.Renderer) {
-	// GLFWウィンドウの取得（型アサーション）
-	openglRenderer := r.(*renderer.OpenGLRenderer)
+	// GLFWウィンドウの取得（安全な型アサーション）
+	openglRenderer, ok := r.(*renderer.OpenGLRenderer)
+	if !ok {
+		log.Fatal("レンダラーがOpenGLRendererではありません")
+	}
 	window := openglRenderer.GetWindow()
 
 	for !window.ShouldClose() {

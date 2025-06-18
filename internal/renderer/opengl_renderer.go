@@ -9,6 +9,40 @@ import (
 	"github.com/go-gl/glfw/v3.3/glfw"
 )
 
+// OpenGL設定の定数
+const (
+	OpenGLMajorVersion = 4
+	OpenGLMinorVersion = 1
+)
+
+// デフォルトカラー設定
+var (
+	DefaultClearColor = [4]float32{0.0, 0.0, 0.0, 1.0} // 黒背景
+)
+
+// デフォルトシェーダーソースコード
+const (
+	BasicVertexShaderSource = `#version 410 core
+layout (location = 0) in vec3 aPos;
+
+uniform mat4 u_transform;
+
+void main()
+{
+    gl_Position = u_transform * vec4(aPos, 1.0);
+}`
+
+	BasicFragmentShaderSource = `#version 410 core
+out vec4 FragColor;
+
+uniform vec4 u_color;
+
+void main()
+{
+    FragColor = u_color;
+}`
+)
+
 
 // OpenGLRenderer はOpenGLを使用した描画を提供する
 type OpenGLRenderer struct {
@@ -47,8 +81,8 @@ func NewOpenGLRendererWithWindow(width, height int, title string) (tinyengine.Re
 	}
 
 	// OpenGLヒント設定
-	glfw.WindowHint(glfw.ContextVersionMajor, 4)
-	glfw.WindowHint(glfw.ContextVersionMinor, 1)
+	glfw.WindowHint(glfw.ContextVersionMajor, OpenGLMajorVersion)
+	glfw.WindowHint(glfw.ContextVersionMinor, OpenGLMinorVersion)
 	glfw.WindowHint(glfw.OpenGLProfile, glfw.OpenGLCoreProfile)
 	glfw.WindowHint(glfw.OpenGLForwardCompatible, glfw.True)
 
@@ -74,30 +108,8 @@ func NewOpenGLRendererWithWindow(width, height int, title string) (tinyengine.Re
 	// シェーダーマネージャー作成
 	shaderManager := NewShaderManager()
 	
-	// 基本的な頂点シェーダー
-	vertexShaderSource := `#version 410 core
-layout (location = 0) in vec3 aPos;
-
-uniform mat4 u_transform;
-
-void main()
-{
-    gl_Position = u_transform * vec4(aPos, 1.0);
-}`
-	
-	// 基本的なフラグメントシェーダー
-	fragmentShaderSource := `#version 410 core
-out vec4 FragColor;
-
-uniform vec4 u_color;
-
-void main()
-{
-    FragColor = u_color;
-}`
-	
 	// シェーダーマネージャーでシェーダーを読み込み
-	if err := shaderManager.LoadShader("basic", vertexShaderSource, fragmentShaderSource); err != nil {
+	if err := shaderManager.LoadShader("basic", BasicVertexShaderSource, BasicFragmentShaderSource); err != nil {
 		window.Destroy()
 		glfw.Terminate()
 		return nil, fmt.Errorf("failed to load basic shader: %v", err)
@@ -117,7 +129,7 @@ void main()
 
 // Clear は画面をクリアする
 func (r *OpenGLRenderer) Clear() {
-	gl.ClearColor(0.0, 0.0, 0.0, 1.0)
+	gl.ClearColor(DefaultClearColor[0], DefaultClearColor[1], DefaultClearColor[2], DefaultClearColor[3])
 	gl.Clear(gl.COLOR_BUFFER_BIT)
 }
 
@@ -210,9 +222,6 @@ func (r *OpenGLRenderer) drawVertices(vertices []float32, indices []uint32, colo
 		return // シェーダーマネージャーが初期化されていない場合は何もしない
 	}
 	
-	// デバッグ情報（本来はログレベルで制御）
-	// fmt.Printf("Drawing primitive type %d with color R:%.2f G:%.2f B:%.2f A:%.2f\n", 
-	//	primitiveType, color.R, color.G, color.B, color.A)
 
 	// 現在のシェーダーを取得
 	currentShaderName := r.shaderManager.GetCurrentShader()

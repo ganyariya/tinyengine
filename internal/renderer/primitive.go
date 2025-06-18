@@ -4,6 +4,13 @@ import (
 	"math"
 )
 
+// デフォルト値の定数
+const (
+	DefaultCircleSegments = 32  // 円のデフォルトセグメント数
+	DefaultLineWidth      = 1.0 // 線のデフォルト幅
+	DefaultAlpha          = 1.0 // デフォルトアルファ値
+)
+
 // Color は色情報を表す構造体
 type Color struct {
 	R, G, B, A float32
@@ -16,7 +23,7 @@ func NewColor(r, g, b, a float32) Color {
 
 // NewColorRGB はアルファ値1.0でColorを作成する
 func NewColorRGB(r, g, b float32) Color {
-	return Color{R: r, G: g, B: b, A: 1.0}
+	return Color{R: r, G: g, B: b, A: DefaultAlpha}
 }
 
 // Primitive は描画プリミティブの基底インターフェース
@@ -110,7 +117,7 @@ func NewCircle(x, y, radius float32, color Color) *Circle {
 		Y:        y,
 		Radius:   radius,
 		Color:    color,
-		Segments: 32, // デフォルト値
+		Segments: DefaultCircleSegments,
 	}
 }
 
@@ -188,7 +195,7 @@ func NewLine(x1, y1, x2, y2 float32, color Color) *Line {
 		X2:    x2,
 		Y2:    y2,
 		Color: color,
-		Width: 1.0, // デフォルト幅
+		Width: DefaultLineWidth,
 	}
 }
 
