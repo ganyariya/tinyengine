@@ -250,16 +250,32 @@ func (r *OpenGLRenderer) drawVertices(vertices []float32, indices []uint32, colo
 
 	// 正規化デバイス座標系への変換を実行
 	// 左上原点のピクセル座標系をOpenGLのNDC座標系に変換
-	width := float32(r.width)
-	height := float32(r.height)
+	// ピクセル座標 (0,0) = 左上 → NDC (-1,1)
+	// ピクセル座標 (width,height) = 右下 → NDC (1,-1)
 	
-	// 変換行列: ピクセル座標(0,0)→(-1,1), (width,height)→(1,-1)
-	// 列優先行列 (column-major)
+	// 現在のフレームバッファサイズを取得（ウィンドウサイズ変更に対応）
+	var fbWidth, fbHeight int32
+	if r.window != nil {
+		w, h := r.window.GetFramebufferSize()
+		fbWidth, fbHeight = int32(w), int32(h)
+		// ビューポートも現在のサイズに合わせて更新
+		gl.Viewport(0, 0, fbWidth, fbHeight)
+	} else {
+		fbWidth, fbHeight = int32(r.width), int32(r.height)
+	}
+	
+	width := float32(fbWidth)
+	height := float32(fbHeight)
+	
+	// 正射投影行列 (Orthographic Projection)
+	// 左上原点のピクセル座標系 → OpenGL NDC座標系
+	// ピクセル座標 Y=0 (上) → NDC Y=1 (上)
+	// ピクセル座標 Y=height (下) → NDC Y=-1 (下)
 	transformMatrix := [16]float32{
-		2.0/width,  0,            0, 0,
-		0,          -2.0/height,  0, 0,
-		0,          0,            1, 0,
-		-1,         1,            0, 1,
+		2.0/width,   0,            0, 0,  // X: [0,width] → [-1,1]
+		0,           -2.0/height,  0, 0,  // Y: [0,height] → [1,-1] (反転)
+		0,           0,            1, 0,  // Z: そのまま
+		-1,          1,            0, 1,  // 平行移動: (0,0)→(-1,1)
 	}
 	
 	// Uniform変数を設定
