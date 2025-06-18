@@ -46,9 +46,9 @@
 ### フェーズ2: 描画システム (3-4週目)
 
 #### 2.1 基本レンダラー
-- [ ] Renderer インターフェース実装 (`internal/renderer/renderer.go`)
-- [ ] OpenGLRenderer 実装 (`internal/renderer/opengl_renderer.go`)
-- [ ] 基本的な描画コマンドキュー
+- [x] Renderer インターフェース実装 (`internal/renderer/renderer.go`)
+- [x] OpenGLRenderer 実装 (`internal/renderer/opengl_renderer.go`)
+- [x] 基本的な描画コマンドキュー
 
 #### 2.2 シェーダーシステム
 - [ ] Shader 構造体実装 (`internal/renderer/shader.go`)
@@ -193,9 +193,9 @@
 ## 進捗状況
 
 - **開始日**: 2025-06-18
-- **現在のフェーズ**: フェーズ3（数学ライブラリ）
-- **完了タスク数**: フェーズ1完了 (16/16)
-- **次回作業**: 数学ライブラリ実装（Vector2、Matrix、Transform、Color）
+- **現在のフェーズ**: フェーズ2（描画システム）
+- **完了タスク数**: フェーズ1完了 (16/16), フェーズ2.1完了 (3/3)
+- **次回作業**: シェーダーシステム実装（Shader構造体、頂点・フラグメントシェーダー、シェーダープログラム管理）
 
 ## 注意事項
 
