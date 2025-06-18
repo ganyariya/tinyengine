@@ -24,6 +24,22 @@ func (m *MockRenderer) DrawRectangle(x, y, width, height float32) {
 	m.Called(x, y, width, height)
 }
 
+func (m *MockRenderer) DrawPrimitive(primitive interface{}) {
+	m.Called(primitive)
+}
+
+func (m *MockRenderer) DrawRectangleColor(x, y, width, height float32, r, g, b, a float32) {
+	m.Called(x, y, width, height, r, g, b, a)
+}
+
+func (m *MockRenderer) DrawCircle(x, y, radius float32, r, g, b, a float32) {
+	m.Called(x, y, radius, r, g, b, a)
+}
+
+func (m *MockRenderer) DrawLine(x1, y1, x2, y2 float32, r, g, b, a float32) {
+	m.Called(x1, y1, x2, y2, r, g, b, a)
+}
+
 func TestMockRenderer_Clear(t *testing.T) {
 	// Arrange
 	mockRenderer := new(MockRenderer)
@@ -115,5 +131,48 @@ func TestBaseRenderer_DrawRectangle(t *testing.T) {
 	// DrawRectangle()は基本実装では何もしないため、パニックしないことを確認
 	assert.NotPanics(t, func() {
 		renderer.DrawRectangle(10, 20, 100, 50)
+	})
+}
+
+func TestBaseRenderer_DrawPrimitive(t *testing.T) {
+	// Arrange
+	renderer := NewBaseRenderer(800, 600)
+	color := NewColorRGB(1.0, 0.0, 0.0)
+	rect := NewRectangle(10, 20, 100, 50, color)
+
+	// Act & Assert
+	// DrawPrimitive()は基本実装では何もしないため、パニックしないことを確認
+	assert.NotPanics(t, func() {
+		renderer.DrawPrimitive(rect)
+	})
+}
+
+func TestBaseRenderer_DrawRectangleColor(t *testing.T) {
+	// Arrange
+	renderer := NewBaseRenderer(800, 600)
+
+	// Act & Assert
+	assert.NotPanics(t, func() {
+		renderer.DrawRectangleColor(10, 20, 100, 50, 1.0, 0.0, 0.0, 1.0)
+	})
+}
+
+func TestBaseRenderer_DrawCircle(t *testing.T) {
+	// Arrange
+	renderer := NewBaseRenderer(800, 600)
+
+	// Act & Assert
+	assert.NotPanics(t, func() {
+		renderer.DrawCircle(50, 50, 25, 0.0, 1.0, 0.0, 1.0)
+	})
+}
+
+func TestBaseRenderer_DrawLine(t *testing.T) {
+	// Arrange
+	renderer := NewBaseRenderer(800, 600)
+
+	// Act & Assert
+	assert.NotPanics(t, func() {
+		renderer.DrawLine(0, 0, 100, 100, 0.0, 0.0, 1.0, 1.0)
 	})
 }

@@ -69,6 +69,22 @@ func (r *testRenderer) DrawRectangle(x, y, width, height float32) {
 	// テスト用の空実装
 }
 
+func (r *testRenderer) DrawPrimitive(primitive interface{}) {
+	// テスト用の空実装
+}
+
+func (r *testRenderer) DrawRectangleColor(x, y, width, height float32, red, g, b, a float32) {
+	// テスト用の空実装
+}
+
+func (r *testRenderer) DrawCircle(x, y, radius float32, red, g, b, a float32) {
+	// テスト用の空実装
+}
+
+func (r *testRenderer) DrawLine(x1, y1, x2, y2 float32, red, g, b, a float32) {
+	// テスト用の空実装
+}
+
 func TestRendererInterface(t *testing.T) {
 	renderer := &testRenderer{}
 	
@@ -83,4 +99,10 @@ func TestRendererInterface(t *testing.T) {
 	
 	// 矩形描画メソッドが呼び出せることを確認
 	r.DrawRectangle(10, 20, 100, 50)
+	
+	// 新しい描画メソッドが呼び出せることを確認
+	r.DrawRectangleColor(10, 20, 100, 50, 1.0, 0.0, 0.0, 1.0)
+	r.DrawCircle(50, 50, 25, 0.0, 1.0, 0.0, 1.0)
+	r.DrawLine(0, 0, 100, 100, 0.0, 0.0, 1.0, 1.0)
+	r.DrawPrimitive(nil) // nilでもパニックしないことを確認
 }

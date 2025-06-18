@@ -33,6 +33,26 @@ func (r *BaseRenderer) DrawRectangle(x, y, width, height float32) {
 	// 基本実装: 何もしない（OpenGLRendererでオーバーライド）
 }
 
+// DrawPrimitive はプリミティブを描画する
+func (r *BaseRenderer) DrawPrimitive(primitive interface{}) {
+	// 基本実装: 何もしない（OpenGLRendererでオーバーライド）
+}
+
+// DrawRectangleColor は色付き矩形を描画する
+func (r *BaseRenderer) DrawRectangleColor(x, y, width, height float32, red, g, b, a float32) {
+	// 基本実装: 何もしない（OpenGLRendererでオーバーライド）
+}
+
+// DrawCircle は円を描画する
+func (r *BaseRenderer) DrawCircle(x, y, radius float32, red, g, b, a float32) {
+	// 基本実装: 何もしない（OpenGLRendererでオーバーライド）
+}
+
+// DrawLine は線を描画する
+func (r *BaseRenderer) DrawLine(x1, y1, x2, y2 float32, red, g, b, a float32) {
+	// 基本実装: 何もしない（OpenGLRendererでオーバーライド）
+}
+
 // GetSize は描画領域のサイズを取得する
 func (r *BaseRenderer) GetSize() (int, int) {
 	return r.width, r.height

@@ -26,6 +26,18 @@ type Renderer interface {
 	
 	// DrawRectangle は矩形を描画する
 	DrawRectangle(x, y, width, height float32)
+	
+	// DrawPrimitive はプリミティブを描画する
+	DrawPrimitive(primitive interface{})
+	
+	// DrawRectangleColor は色付き矩形を描画する
+	DrawRectangleColor(x, y, width, height float32, r, g, b, a float32)
+	
+	// DrawCircle は円を描画する
+	DrawCircle(x, y, radius float32, r, g, b, a float32)
+	
+	// DrawLine は線を描画する
+	DrawLine(x1, y1, x2, y2 float32, r, g, b, a float32)
 }
 
 // InputManager は入力管理機能を提供するインターフェース

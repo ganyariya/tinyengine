@@ -8,6 +8,19 @@
 *.so
 *.dylib
 
+# Built binaries directory
+bin/
+build/
+
+# Executable files (Unix)
+**/bin/*
+**/build/*
+
+# Specific TinyEngine binaries
+phase2-3-gallery
+simple-demo
+tinyengine
+
 # Test binary, built with `go test -c`
 *.test
 
