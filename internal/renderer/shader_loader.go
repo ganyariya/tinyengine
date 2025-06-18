@@ -12,7 +12,7 @@ func LoadShaderFromFile(filePath string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to read shader file %s: %v", filePath, err)
 	}
-	
+
 	return string(data), nil
 }
 
@@ -23,31 +23,31 @@ func CreateShaderFromFiles(vertexPath, fragmentPath string) (*Shader, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to load vertex shader: %v", err)
 	}
-	
+
 	// フラグメントシェーダー読み込み
 	fragmentSource, err := LoadShaderFromFile(fragmentPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load fragment shader: %v", err)
 	}
-	
-	// Shader作成
-	shader := NewShader()
-	
+
+	// Shader作成（実際のOpenGLバックエンドを使用）
+	shader := NewShader(NewRealOpenGLBackend())
+
 	// 頂点シェーダー読み込み
 	if err := shader.LoadVertexShader(vertexSource); err != nil {
 		return nil, fmt.Errorf("failed to load vertex shader: %v", err)
 	}
-	
+
 	// フラグメントシェーダー読み込み
 	if err := shader.LoadFragmentShader(fragmentSource); err != nil {
 		return nil, fmt.Errorf("failed to load fragment shader: %v", err)
 	}
-	
+
 	// プログラムリンク
 	if err := shader.LinkProgram(); err != nil {
 		return nil, fmt.Errorf("failed to link shader program: %v", err)
 	}
-	
+
 	return shader, nil
 }
 

@@ -2,18 +2,18 @@ package renderer
 
 import (
 	"testing"
-	
-	"github.com/stretchr/testify/assert"
+
 	"github.com/ganyariya/tinyengine/pkg/tinyengine"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestNewOpenGLRenderer(t *testing.T) {
 	// Arrange
 	width, height := 800, 600
-	
+
 	// Act
 	renderer, err := NewOpenGLRenderer(width, height)
-	
+
 	// Assert
 	// 実際のOpenGL初期化が必要なため、ヘッドレス環境ではエラーになることを確認
 	if err != nil {

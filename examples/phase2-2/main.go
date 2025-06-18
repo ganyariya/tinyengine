@@ -157,7 +157,7 @@ void main() {
 }
 `
 
-	shader := renderer.NewShader()
+	shader := renderer.NewShader(renderer.NewRealOpenGLBackend())
 	
 	if err := shader.LoadVertexShader(vertexShaderSource); err != nil {
 		return nil, err

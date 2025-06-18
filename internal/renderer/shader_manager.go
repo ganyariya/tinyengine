@@ -25,28 +25,28 @@ func (sm *ShaderManager) LoadShader(name, vertexSource, fragmentSource string) e
 	if sm.HasShader(name) {
 		sm.DeleteShader(name)
 	}
-	
-	// 新しいシェーダー作成
-	shader := NewShader()
-	
+
+	// 新しいシェーダー作成（実際のOpenGLバックエンドを使用）
+	shader := NewShader(NewRealOpenGLBackend())
+
 	// 頂点シェーダー読み込み
 	if err := shader.LoadVertexShader(vertexSource); err != nil {
 		return fmt.Errorf("failed to load vertex shader '%s': %v", name, err)
 	}
-	
+
 	// フラグメントシェーダー読み込み
 	if err := shader.LoadFragmentShader(fragmentSource); err != nil {
 		return fmt.Errorf("failed to load fragment shader '%s': %v", name, err)
 	}
-	
+
 	// プログラムリンク
 	if err := shader.LinkProgram(); err != nil {
 		return fmt.Errorf("failed to link shader program '%s': %v", name, err)
 	}
-	
+
 	// マネージャーに登録
 	sm.shaders[name] = shader
-	
+
 	return nil
 }
 
@@ -56,12 +56,12 @@ func (sm *ShaderManager) LoadShaderFromFiles(name, vertexPath, fragmentPath stri
 	if err != nil {
 		return fmt.Errorf("failed to create shader '%s' from files: %v", name, err)
 	}
-	
+
 	// 同名のシェーダーが既に存在する場合は先に削除
 	if sm.HasShader(name) {
 		sm.DeleteShader(name)
 	}
-	
+
 	sm.shaders[name] = shader
 	return nil
 }
@@ -72,12 +72,12 @@ func (sm *ShaderManager) LoadBuiltinShader(name string) error {
 	if err != nil {
 		return fmt.Errorf("failed to load builtin shader '%s': %v", name, err)
 	}
-	
+
 	// 同名のシェーダーが既に存在する場合は先に削除
 	if sm.HasShader(name) {
 		sm.DeleteShader(name)
 	}
-	
+
 	sm.shaders[name] = shader
 	return nil
 }
@@ -116,12 +116,12 @@ func (sm *ShaderManager) DeleteShader(name string) bool {
 	if shader, exists := sm.shaders[name]; exists {
 		shader.Delete()
 		delete(sm.shaders, name)
-		
+
 		// 現在使用中のシェーダーが削除された場合はクリア
 		if sm.currentShader == name {
 			sm.currentShader = ""
 		}
-		
+
 		return true
 	}
 	return false
@@ -147,10 +147,10 @@ func (sm *ShaderManager) GetShaderNames() []string {
 	for name := range sm.shaders {
 		names = append(names, name)
 	}
-	
+
 	// アルファベット順にソート
 	sort.Strings(names)
-	
+
 	return names
 }
 
@@ -159,17 +159,17 @@ func (sm *ShaderManager) SetUniformMat4(name string, matrix [16]float32) bool {
 	if sm.currentShader == "" {
 		return false
 	}
-	
+
 	shader := sm.GetShader(sm.currentShader)
 	if shader == nil {
 		return false
 	}
-	
+
 	location := shader.GetUniformLocation(name)
 	if location < 0 {
 		return false
 	}
-	
+
 	shader.SetUniformMat4(location, matrix)
 	return true
 }
@@ -179,17 +179,17 @@ func (sm *ShaderManager) SetUniformVec3(name string, vector [3]float32) bool {
 	if sm.currentShader == "" {
 		return false
 	}
-	
+
 	shader := sm.GetShader(sm.currentShader)
 	if shader == nil {
 		return false
 	}
-	
+
 	location := shader.GetUniformLocation(name)
 	if location < 0 {
 		return false
 	}
-	
+
 	shader.SetUniformVec3(location, vector)
 	return true
 }
@@ -199,17 +199,17 @@ func (sm *ShaderManager) SetUniformFloat(name string, value float32) bool {
 	if sm.currentShader == "" {
 		return false
 	}
-	
+
 	shader := sm.GetShader(sm.currentShader)
 	if shader == nil {
 		return false
 	}
-	
+
 	location := shader.GetUniformLocation(name)
 	if location < 0 {
 		return false
 	}
-	
+
 	shader.SetUniformFloat(location, value)
 	return true
 }
