@@ -1,431 +1,720 @@
-# 第3章: 描画システム
+# フェーズ2.2: シェーダーシステム実装
 
-## 理論編：描画システムとは何か？
+## 学習目標
+- OpenGLシェーダーの基本概念を理解する
+- 依存性注入によるテスト可能な設計を学ぶ
+- シェーダープログラムの管理方法を習得する
+- 実際のGPUプログラミングの基礎を体験する
 
-### 3.1 描画システムの基本概念
+## 理論: シェーダーとGPUプログラミング
 
-描画システム（Rendering System）は、ゲームエンジンの中核となるコンポーネントの一つです。ゲーム内のオブジェクトやUIを画面に表示する責任を持ちます。
+### シェーダーとは？
+シェーダーは、GPU上で実行される小さなプログラムです：
 
-#### なぜ描画システムが必要なのか？
+1. **頂点シェーダー**: 頂点の位置や属性を処理
+2. **フラグメントシェーダー**: ピクセルの色を決定
+3. **ジオメトリシェーダー**: プリミティブの変形（今回は使用しない）
 
-1. **抽象化**: 複雑なグラフィックスAPIを使いやすい形で提供
-2. **最適化**: バッチング、カリング、Z-オーダリングなどの最適化を一箇所で管理
-3. **ポータビリティ**: 異なるグラフィックスAPI（OpenGL、DirectX、Vulkan）に対応可能な統一インターフェース
-4. **デバッグ**: 描画デバッグ、パフォーマンス計測の統一実装
+### GLSL（OpenGL Shading Language）
+シェーダーはGLSLという言語で記述されます：
 
-### 3.2 一般的なゲームエンジンでの描画システム
+```glsl
+// 頂点シェーダーの例
+#version 410 core
+layout (location = 0) in vec3 aPos;
+layout (location = 1) in vec3 aColor;
 
-主要なゲームエンジンでの描画システムの役割：
+out vec3 vertexColor;
 
-- **Unity**: Graphics.DrawMesh(), Camera.Render()
-- **Unreal Engine**: UE Rendering Pipeline
-- **Godot**: RenderingServer, CanvasItem
+void main() {
+    gl_Position = vec4(aPos, 1.0);
+    vertexColor = aColor;
+}
 
-## 設計編：どう設計するか？
+// フラグメントシェーダーの例
+#version 410 core
+in vec3 vertexColor;
+out vec4 FragColor;
 
-### 3.3 インターフェース設計
+uniform float alpha;
 
-TinyEngineの描画システムは以下の設計原則に従います：
+void main() {
+    FragColor = vec4(vertexColor, alpha);
+}
+```
+
+### 依存性注入の重要性
+OpenGLはシステム依存のAPIのため、テストが困難です。依存性注入により：
+- **テスト可能**: モックオブジェクトでテスト実行
+- **保守性**: OpenGL実装を抽象化
+- **移植性**: 異なるグラフィックAPIへの対応が容易
+
+## 実装手順
+
+### ステップ1: OpenGLバックエンド抽象化
 
 ```go
-// 基本的な描画インターフェース
-type Renderer interface {
-    Clear()                                         // 画面をクリア
-    Present()                                       // 画面に表示
-    DrawRectangle(x, y, width, height float32)      // 矩形描画
+// internal/renderer/opengl_backend.go
+package renderer
+
+// OpenGLBackend はOpenGL APIの抽象化インターフェース
+type OpenGLBackend interface {
+    // シェーダー関連
+    CreateShader(shaderType uint32) uint32
+    ShaderSource(shader uint32, source string)
+    CompileShader(shader uint32)
+    GetShaderiv(shader uint32, pname uint32) int32
+    GetShaderInfoLog(shader uint32) string
+    DeleteShader(shader uint32)
+    
+    // プログラム関連
+    CreateProgram() uint32
+    AttachShader(program, shader uint32)
+    DetachShader(program, shader uint32)
+    LinkProgram(program uint32)
+    GetProgramiv(program uint32, pname uint32) int32
+    GetProgramInfoLog(program uint32) string
+    UseProgram(program uint32)
+    DeleteProgram(program uint32)
+    
+    // ユニフォーム変数関連
+    GetUniformLocation(program uint32, name string) int32
+    Uniform1f(location int32, value float32)
+    Uniform1i(location int32, value int32)
+    Uniform3fv(location int32, vector [3]float32)
+    UniformMatrix4fv(location int32, matrix [16]float32)
 }
 ```
 
-### 3.4 依存関係の整理
-
-```
-描画システムの依存関係:
-GameObject -> Renderer Interface <- OpenGLRenderer
-                |
-                v
-        CommandQueue System
-                |
-                v
-         OpenGL/Graphics API
-```
-
-### 3.5 SOLID原則の適用
-
-- **SRP**: Rendererは描画のみを担当
-- **OCP**: 新しいレンダラー（DirectXRenderer等）を追加可能
-- **LSP**: すべてのRenderer実装は互換性がある
-- **ISP**: 必要最小限のメソッドのみ公開
-- **DIP**: 実装ではなく抽象（interface）に依存
-
-## 実装編：段階的実装手順
-
-### ステップ1: 基本構造
-
-#### 1.1 基本Rendererインターフェースの実装
+### ステップ2: 実際のOpenGL実装
 
 ```go
-// pkg/tinyengine/interfaces.go
-type Renderer interface {
-    Clear()
-    Present()
-    DrawRectangle(x, y, width, height float32)
-}
-```
+// internal/renderer/real_opengl_backend.go
+package renderer
 
-#### 1.2 BaseRendererの実装
-
-```go
-// internal/renderer/renderer.go
-type BaseRenderer struct {
-    width  int
-    height int
-}
-
-func NewBaseRenderer(width, height int) tinyengine.Renderer {
-    return &BaseRenderer{
-        width:  width,
-        height: height,
-    }
-}
-
-func (r *BaseRenderer) Clear() {
-    // 基本実装: 何もしない
-}
-
-func (r *BaseRenderer) Present() {
-    // 基本実装: 何もしない
-}
-
-func (r *BaseRenderer) DrawRectangle(x, y, width, height float32) {
-    // 基本実装: 何もしない
-}
-```
-
-### ステップ2: OpenGLRenderer実装
-
-#### 2.1 OpenGLライブラリの追加
-
-```bash
-go get github.com/go-gl/gl/v4.1-core/gl
-go get github.com/go-gl/glfw/v3.3/glfw
-```
-
-#### 2.2 OpenGLRendererの実装
-
-```go
-// internal/renderer/opengl_renderer.go
-type OpenGLRenderer struct {
-    width  int
-    height int
-    window *glfw.Window
-}
-
-func NewOpenGLRenderer(width, height int) (tinyengine.Renderer, error) {
-    renderer := &OpenGLRenderer{
-        width:  width,
-        height: height,
-    }
-    
-    // ヘッドレス環境対応
-    if runtime.GOOS == "linux" && runtime.GOARCH == "amd64" {
-        return nil, fmt.Errorf("OpenGL not available in headless environment")
-    }
-    
-    return renderer, nil
-}
-
-func (r *OpenGLRenderer) Clear() {
-    gl.ClearColor(0.0, 0.0, 0.0, 1.0)
-    gl.Clear(gl.COLOR_BUFFER_BIT)
-}
-
-func (r *OpenGLRenderer) Present() {
-    if r.window != nil {
-        r.window.SwapBuffers()
-        glfw.PollEvents()
-    }
-}
-
-func (r *OpenGLRenderer) DrawRectangle(x, y, width, height float32) {
-    // 頂点データ作成
-    vertices := []float32{
-        x,         y,          // 左下
-        x + width, y,          // 右下
-        x + width, y + height, // 右上
-        x,         y + height, // 左上
-    }
-    
-    indices := []uint32{
-        0, 1, 2, // 最初の三角形
-        2, 3, 0, // 二番目の三角形
-    }
-    
-    // VBO, VAO, EBO作成と描画
-    var vao, vbo, ebo uint32
-    gl.GenVertexArrays(1, &vao)
-    gl.GenBuffers(1, &vbo)
-    gl.GenBuffers(1, &ebo)
-    
-    gl.BindVertexArray(vao)
-    
-    gl.BindBuffer(gl.ARRAY_BUFFER, vbo)
-    gl.BufferData(gl.ARRAY_BUFFER, len(vertices)*4, gl.Ptr(vertices), gl.STATIC_DRAW)
-    
-    gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, ebo)
-    gl.BufferData(gl.ELEMENT_ARRAY_BUFFER, len(indices)*4, gl.Ptr(indices), gl.STATIC_DRAW)
-    
-    gl.VertexAttribPointer(0, 2, gl.FLOAT, false, 2*4, nil)
-    gl.EnableVertexAttribArray(0)
-    
-    // 描画
-    gl.DrawElements(gl.TRIANGLES, int32(len(indices)), gl.UNSIGNED_INT, nil)
-    
-    // クリーンアップ
-    gl.BindVertexArray(0)
-    gl.DeleteVertexArrays(1, &vao)
-    gl.DeleteBuffers(1, &vbo)
-    gl.DeleteBuffers(1, &ebo)
-}
-```
-
-### ステップ3: コマンドキューシステム
-
-#### 3.1 描画コマンドの定義
-
-```go
-// internal/renderer/command_queue.go
-type CommandType int
-
-const (
-    ClearCommand CommandType = iota
-    RectangleCommand
+import (
+    "unsafe"
+    "github.com/go-gl/gl/v4.1-core/gl"
 )
 
-type RenderCommand struct {
-    Type   CommandType
-    Params map[string]interface{}
+// RealOpenGLBackend は実際のOpenGL APIを使用する実装
+type RealOpenGLBackend struct{}
+
+// NewRealOpenGLBackend は新しいRealOpenGLBackendを作成する
+func NewRealOpenGLBackend() *RealOpenGLBackend {
+    return &RealOpenGLBackend{}
 }
+
+func (r *RealOpenGLBackend) CreateShader(shaderType uint32) uint32 {
+    return gl.CreateShader(shaderType)
+}
+
+func (r *RealOpenGLBackend) ShaderSource(shader uint32, source string) {
+    cSource, free := gl.Strs(source + "\x00")
+    defer free()
+    gl.ShaderSource(shader, 1, cSource, nil)
+}
+
+func (r *RealOpenGLBackend) CompileShader(shader uint32) {
+    gl.CompileShader(shader)
+}
+
+func (r *RealOpenGLBackend) GetShaderiv(shader uint32, pname uint32) int32 {
+    var result int32
+    gl.GetShaderiv(shader, pname, &result)
+    return result
+}
+
+func (r *RealOpenGLBackend) GetShaderInfoLog(shader uint32) string {
+    var logLength int32
+    gl.GetShaderiv(shader, gl.INFO_LOG_LENGTH, &logLength)
+    
+    if logLength == 0 {
+        return ""
+    }
+    
+    log := make([]byte, logLength)
+    gl.GetShaderInfoLog(shader, logLength, nil, &log[0])
+    return string(log)
+}
+
+// 他のメソッドも同様に実装...
 ```
 
-#### 3.2 CommandQueueの実装
+### ステップ3: テスト用モック実装
 
 ```go
-type CommandQueue struct {
-    commands []RenderCommand
+// internal/renderer/mock_opengl_backend.go
+package renderer
+
+import (
+    "strings"
+    "github.com/stretchr/testify/mock"
+)
+
+// MockOpenGLBackend はテスト用のOpenGLバックエンドモック
+type MockOpenGLBackend struct {
+    mock.Mock
+    
+    // モック用の内部状態
+    shaders       map[uint32]*MockShader
+    programs      map[uint32]*MockProgram
+    nextShaderID  uint32
+    nextProgramID uint32
 }
 
-func NewCommandQueue() *CommandQueue {
-    return &CommandQueue{
-        commands: make([]RenderCommand, 0),
+// MockShader はモック用のシェーダー情報
+type MockShader struct {
+    ID           uint32
+    Type         uint32
+    Source       string
+    Compiled     bool
+    CompileError string
+}
+
+// MockProgram はモック用のプログラム情報
+type MockProgram struct {
+    ID        uint32
+    Shaders   []uint32
+    Linked    bool
+    LinkError string
+    Uniforms  map[string]int32
+    InUse     bool
+}
+
+// NewMockOpenGLBackend は新しいMockOpenGLBackendを作成する
+func NewMockOpenGLBackend() *MockOpenGLBackend {
+    return &MockOpenGLBackend{
+        shaders:       make(map[uint32]*MockShader),
+        programs:      make(map[uint32]*MockProgram),
+        nextShaderID:  1,
+        nextProgramID: 1,
     }
 }
 
-func (q *CommandQueue) AddClearCommand() {
-    command := RenderCommand{
-        Type:   ClearCommand,
-        Params: make(map[string]interface{}),
+func (m *MockOpenGLBackend) CreateShader(shaderType uint32) uint32 {
+    args := m.Called(shaderType)
+    
+    // モックの戻り値を取得
+    id := args.Get(0).(uint32)
+    
+    // 内部状態にシェーダーを作成
+    m.shaders[id] = &MockShader{
+        ID:       id,
+        Type:     shaderType,
+        Compiled: false,
     }
-    q.commands = append(q.commands, command)
+    
+    return id
 }
 
-func (q *CommandQueue) AddRectangleCommand(x, y, width, height float32) {
-    command := RenderCommand{
-        Type: RectangleCommand,
-        Params: map[string]interface{}{
-            "x":      x,
-            "y":      y,
-            "width":  width,
-            "height": height,
-        },
+func (m *MockOpenGLBackend) ShaderSource(shader uint32, source string) {
+    m.Called(shader, source)
+    
+    if s, exists := m.shaders[shader]; exists {
+        s.Source = source
     }
-    q.commands = append(q.commands, command)
 }
 
-func (q *CommandQueue) Execute(renderer tinyengine.Renderer) {
-    for _, command := range q.commands {
-        switch command.Type {
-        case ClearCommand:
-            renderer.Clear()
-        case RectangleCommand:
-            x := command.Params["x"].(float32)
-            y := command.Params["y"].(float32)
-            width := command.Params["width"].(float32)
-            height := command.Params["height"].(float32)
-            renderer.DrawRectangle(x, y, width, height)
+func (m *MockOpenGLBackend) CompileShader(shader uint32) {
+    m.Called(shader)
+    
+    if s, exists := m.shaders[shader]; exists {
+        // デフォルトではコンパイル成功
+        s.Compiled = true
+        
+        // ソースコードに"ERROR"が含まれている場合はエラーにする
+        if strings.Contains(s.Source, "ERROR") {
+            s.Compiled = false
+            s.CompileError = "Mock compile error"
         }
     }
 }
+
+// ヘルパーメソッド：テスト用
+func (m *MockOpenGLBackend) GetShader(id uint32) *MockShader {
+    return m.shaders[id]
+}
+
+func (m *MockOpenGLBackend) GetProgram(id uint32) *MockProgram {
+    return m.programs[id]
+}
 ```
 
-## 動作原理編：どう動いているか？
-
-### 4.1 OpenGL描画パイプライン
-
-TinyEngineのOpenGL描画処理は以下の流れで実行されます：
-
-1. **頂点データ作成**: 矩形の4つの頂点座標を生成
-2. **バッファオブジェクト作成**: VBO（頂点バッファ）, EBO（インデックスバッファ）, VAO（頂点配列オブジェクト）
-3. **データ転送**: CPUからGPUへ頂点データを転送
-4. **描画実行**: GPU上でピクセルを描画
-5. **リソース解放**: 一時的なOpenGLリソースをクリーンアップ
-
-### 4.2 コマンドキューの利点
-
-1. **遅延実行**: 描画コマンドを蓄積して最適なタイミングで実行
-2. **バッチング**: 似たような描画コマンドをまとめて効率化
-3. **デバッグ**: コマンド履歴を確認可能
-4. **並列化**: コマンド生成と実行を並列化可能
-
-### 4.3 メモリ配置とパフォーマンス
-
-```
-描画データのメモリフロー:
-CPU Memory -> VBO (GPU Memory) -> Vertex Shader -> Fragment Shader -> Framebuffer
-```
-
-- **VBO**: 頂点データをGPUメモリに保存
-- **EBO**: インデックスデータでメモリ使用量を削減
-- **VAO**: 頂点属性の設定を保存して再利用
-
-### 4.4 座標系変換
-
-TinyEngineでは以下の座標系を使用：
-
-- **ワールド座標**: ゲーム世界の絶対座標
-- **スクリーン座標**: 実際の画面ピクセル座標
-- **正規化デバイス座標(NDC)**: OpenGLの-1.0〜1.0の範囲
-
-## テスト戦略
-
-### 5.1 単体テスト
+### ステップ4: Shader構造体実装
 
 ```go
-func TestBaseRenderer_DrawRectangle(t *testing.T) {
-    // Arrange
-    renderer := NewBaseRenderer(800, 600)
-    
-    // Act & Assert
-    assert.NotPanics(t, func() {
-        renderer.DrawRectangle(10, 20, 100, 50)
-    })
-}
-```
+// internal/renderer/shader.go
+package renderer
 
-### 5.2 モックテスト
+import (
+    "fmt"
+    "github.com/go-gl/gl/v4.1-core/gl"
+)
 
-```go
-type MockRenderer struct {
-    mock.Mock
+// Shader はOpenGLシェーダープログラムを管理する
+type Shader struct {
+    backend          OpenGLBackend
+    programID        uint32
+    vertexShaderID   uint32
+    fragmentShaderID uint32
 }
 
-func (m *MockRenderer) DrawRectangle(x, y, width, height float32) {
-    m.Called(x, y, width, height)
+// NewShader は新しいShaderを作成する
+func NewShader(backend OpenGLBackend) *Shader {
+    return &Shader{
+        backend:          backend,
+        programID:        0,
+        vertexShaderID:   0,
+        fragmentShaderID: 0,
+    }
 }
 
-func TestCommandQueue_Execute(t *testing.T) {
-    // Arrange
-    queue := NewCommandQueue()
-    mockRenderer := new(MockRenderer)
-    mockRenderer.On("DrawRectangle", float32(10), float32(20), float32(100), float32(50)).Return()
-    
-    // Act
-    queue.AddRectangleCommand(10, 20, 100, 50)
-    queue.Execute(mockRenderer)
-    
-    // Assert
-    mockRenderer.AssertExpectations(t)
+// LoadVertexShader は頂点シェーダーを読み込む
+func (s *Shader) LoadVertexShader(source string) error {
+    return s.loadShader(source, gl.VERTEX_SHADER, &s.vertexShaderID)
 }
-```
 
-### 5.3 統合テスト
+// LoadFragmentShader はフラグメントシェーダーを読み込む
+func (s *Shader) LoadFragmentShader(source string) error {
+    return s.loadShader(source, gl.FRAGMENT_SHADER, &s.fragmentShaderID)
+}
 
-```go
-func TestOpenGLRenderer_Integration(t *testing.T) {
-    // OpenGL環境が必要なため、CI環境ではスキップ
-    if testing.Short() {
-        t.Skip("Integration test requires OpenGL context")
+// loadShader は指定された種類のシェーダーを読み込む
+func (s *Shader) loadShader(source string, shaderType uint32, shaderID *uint32) error {
+    // シェーダー作成
+    *shaderID = s.backend.CreateShader(shaderType)
+    if *shaderID == 0 {
+        return fmt.Errorf("failed to create shader")
     }
     
-    renderer, err := NewOpenGLRendererWithWindow(800, 600, "Test")
-    require.NoError(t, err)
-    defer renderer.Destroy()
+    // ソースコード設定
+    s.backend.ShaderSource(*shaderID, source)
     
-    // 基本的な描画テスト
-    renderer.Clear()
-    renderer.DrawRectangle(10, 20, 100, 50)
-    renderer.Present()
+    // コンパイル
+    s.backend.CompileShader(*shaderID)
+    
+    // コンパイル結果確認
+    success := s.backend.GetShaderiv(*shaderID, gl.COMPILE_STATUS)
+    if success == gl.FALSE {
+        log := s.backend.GetShaderInfoLog(*shaderID)
+        s.backend.DeleteShader(*shaderID)
+        *shaderID = 0
+        return fmt.Errorf("shader compilation failed: %s", log)
+    }
+    
+    return nil
+}
+
+// LinkProgram はシェーダープログラムをリンクする
+func (s *Shader) LinkProgram() error {
+    // 頂点・フラグメントシェーダーがロードされているかチェック
+    if s.vertexShaderID == 0 {
+        return fmt.Errorf("vertex shader not loaded")
+    }
+    if s.fragmentShaderID == 0 {
+        return fmt.Errorf("fragment shader not loaded")
+    }
+    
+    // プログラム作成
+    s.programID = s.backend.CreateProgram()
+    if s.programID == 0 {
+        return fmt.Errorf("failed to create shader program")
+    }
+    
+    // シェーダーをアタッチ
+    s.backend.AttachShader(s.programID, s.vertexShaderID)
+    s.backend.AttachShader(s.programID, s.fragmentShaderID)
+    
+    // リンク
+    s.backend.LinkProgram(s.programID)
+    
+    // リンク結果確認
+    success := s.backend.GetProgramiv(s.programID, gl.LINK_STATUS)
+    if success == gl.FALSE {
+        log := s.backend.GetProgramInfoLog(s.programID)
+        return fmt.Errorf("shader program linking failed: %s", log)
+    }
+    
+    // シェーダーをデタッチ・削除（プログラムにリンク済み）
+    s.backend.DetachShader(s.programID, s.vertexShaderID)
+    s.backend.DetachShader(s.programID, s.fragmentShaderID)
+    s.backend.DeleteShader(s.vertexShaderID)
+    s.backend.DeleteShader(s.fragmentShaderID)
+    
+    s.vertexShaderID = 0
+    s.fragmentShaderID = 0
+    
+    return nil
+}
+
+// Use はシェーダープログラムを使用する
+func (s *Shader) Use() {
+    if s.programID != 0 {
+        s.backend.UseProgram(s.programID)
+    }
+}
+
+// GetUniformLocation はユニフォーム変数の位置を取得する
+func (s *Shader) GetUniformLocation(name string) int32 {
+    if s.programID == 0 {
+        return -1
+    }
+    
+    return s.backend.GetUniformLocation(s.programID, name)
+}
+
+// SetUniformFloat は浮動小数点数のユニフォーム変数を設定する
+func (s *Shader) SetUniformFloat(location int32, value float32) {
+    if location >= 0 {
+        s.backend.Uniform1f(location, value)
+    }
 }
 ```
 
-## 発展編：さらに学ぶために
-
-### 6.1 より高度な実装方法
-
-1. **バッチレンダリング**: 複数の矩形を一度に描画
-2. **テクスチャサポート**: 画像を使った描画
-3. **シェーダーシステム**: カスタムシェーダーサポート
-4. **3D描画**: 3Dオブジェクトの描画
-
-### 6.2 他のゲームエンジンとの比較
-
-| エンジン | 描画API | 特徴 |
-|---------|---------|------|
-| Unity | Graphics API | 高レベル抽象化、エディタ統合 |
-| Unreal | RHI | 高パフォーマンス、リアルタイムレンダリング |
-| Godot | RenderingServer | オープンソース、軽量 |
-| TinyEngine | Renderer Interface | 教育目的、シンプル設計 |
-
-### 6.3 参考資料
-
-- [Learn OpenGL](https://learnopengl.com/)
-- [OpenGL Tutorial](http://www.opengl-tutorial.org/)
-- [Real-Time Rendering](https://www.realtimerendering.com/)
-- [Game Engine Architecture](https://www.gameenginebook.com/)
-
-## 章末課題
-
-### 課題1: 実装確認
-
-以下のコードを実行して、描画システムが正常に動作することを確認してください：
+### ステップ5: 意味のあるテスト実装
 
 ```go
-func main() {
-    // BaseRendererのテスト
-    renderer := NewBaseRenderer(800, 600)
-    renderer.Clear()
-    renderer.DrawRectangle(100, 100, 200, 150)
-    renderer.Present()
+// internal/renderer/shader_test.go
+package renderer
+
+import (
+    "testing"
+    "github.com/go-gl/gl/v4.1-core/gl"
+    "github.com/stretchr/testify/assert"
+)
+
+// テスト用の基本的なシェーダーソースコード
+const (
+    validVertexShaderSource = `
+#version 410 core
+layout (location = 0) in vec3 aPos;
+layout (location = 1) in vec3 aColor;
+
+out vec3 vertexColor;
+
+void main() {
+    gl_Position = vec4(aPos, 1.0);
+    vertexColor = aColor;
+}
+`
+
+    validFragmentShaderSource = `
+#version 410 core
+in vec3 vertexColor;
+out vec4 FragColor;
+
+uniform float alpha;
+
+void main() {
+    FragColor = vec4(vertexColor, alpha);
+}
+`
+
+    invalidShaderSource = `
+#version 410 core
+ERROR This is invalid syntax
+`
+)
+
+func TestNewShader_WithValidBackend(t *testing.T) {
+    // Arrange
+    mockBackend := NewMockOpenGLBackend()
     
-    // CommandQueueのテスト
-    queue := NewCommandQueue()
-    queue.AddClearCommand()
-    queue.AddRectangleCommand(50, 50, 100, 100)
-    queue.Execute(renderer)
+    // Act
+    shader := NewShader(mockBackend)
+    
+    // Assert
+    assert.NotNil(t, shader)
+    assert.Equal(t, uint32(0), shader.GetProgramID())
+}
+
+func TestShader_LoadVertexShader_Success(t *testing.T) {
+    // Arrange
+    mockBackend := NewMockOpenGLBackend()
+    shader := NewShader(mockBackend)
+    
+    // モックの設定：正常ケース
+    mockBackend.On("CreateShader", uint32(gl.VERTEX_SHADER)).Return(uint32(1))
+    mockBackend.On("ShaderSource", uint32(1), validVertexShaderSource).Return()
+    mockBackend.On("CompileShader", uint32(1)).Return()
+    mockBackend.On("GetShaderiv", uint32(1), uint32(gl.COMPILE_STATUS)).Return(int32(1))
+    
+    // Act
+    err := shader.LoadVertexShader(validVertexShaderSource)
+    
+    // Assert
+    assert.NoError(t, err)
+    mockBackend.AssertExpectations(t)
+    
+    // 内部状態の確認
+    mockShader := mockBackend.GetShader(1)
+    assert.NotNil(t, mockShader)
+    assert.Equal(t, validVertexShaderSource, mockShader.Source)
+    assert.True(t, mockShader.Compiled)
+}
+
+func TestShader_LoadVertexShader_CompilationError(t *testing.T) {
+    // Arrange
+    mockBackend := NewMockOpenGLBackend()
+    shader := NewShader(mockBackend)
+    
+    // モックの設定：コンパイルエラーケース
+    mockBackend.On("CreateShader", uint32(gl.VERTEX_SHADER)).Return(uint32(1))
+    mockBackend.On("ShaderSource", uint32(1), invalidShaderSource).Return()
+    mockBackend.On("CompileShader", uint32(1)).Return()
+    mockBackend.On("GetShaderiv", uint32(1), uint32(gl.COMPILE_STATUS)).Return(int32(0))
+    mockBackend.On("GetShaderInfoLog", uint32(1)).Return("Mock compile error")
+    mockBackend.On("DeleteShader", uint32(1)).Return()
+    
+    // Act
+    err := shader.LoadVertexShader(invalidShaderSource)
+    
+    // Assert
+    assert.Error(t, err)
+    assert.Contains(t, err.Error(), "shader compilation failed")
+    assert.Contains(t, err.Error(), "Mock compile error")
+    mockBackend.AssertExpectations(t)
+}
+
+func TestShader_FullWorkflow_Integration(t *testing.T) {
+    // Arrange
+    mockBackend := NewMockOpenGLBackend()
+    shader := NewShader(mockBackend)
+    
+    // 全フローのモック設定
+    // 頂点シェーダー
+    mockBackend.On("CreateShader", uint32(gl.VERTEX_SHADER)).Return(uint32(1))
+    mockBackend.On("ShaderSource", uint32(1), validVertexShaderSource).Return()
+    mockBackend.On("CompileShader", uint32(1)).Return()
+    mockBackend.On("GetShaderiv", uint32(1), uint32(gl.COMPILE_STATUS)).Return(int32(1))
+    
+    // フラグメントシェーダー
+    mockBackend.On("CreateShader", uint32(gl.FRAGMENT_SHADER)).Return(uint32(2))
+    mockBackend.On("ShaderSource", uint32(2), validFragmentShaderSource).Return()
+    mockBackend.On("CompileShader", uint32(2)).Return()
+    mockBackend.On("GetShaderiv", uint32(2), uint32(gl.COMPILE_STATUS)).Return(int32(1))
+    
+    // プログラムリンク
+    mockBackend.On("CreateProgram").Return(uint32(3))
+    mockBackend.On("AttachShader", uint32(3), uint32(1)).Return()
+    mockBackend.On("AttachShader", uint32(3), uint32(2)).Return()
+    mockBackend.On("LinkProgram", uint32(3)).Return()
+    mockBackend.On("GetProgramiv", uint32(3), uint32(gl.LINK_STATUS)).Return(int32(1))
+    mockBackend.On("DetachShader", uint32(3), uint32(1)).Return()
+    mockBackend.On("DetachShader", uint32(3), uint32(2)).Return()
+    mockBackend.On("DeleteShader", uint32(1)).Return()
+    mockBackend.On("DeleteShader", uint32(2)).Return()
+    
+    // 使用とユニフォーム設定
+    mockBackend.On("UseProgram", uint32(3)).Return()
+    mockBackend.On("GetUniformLocation", uint32(3), "alpha").Return(int32(0))
+    mockBackend.On("Uniform1f", int32(0), float32(0.5)).Return()
+    
+    // Act: 完全なワークフロー
+    err := shader.LoadVertexShader(validVertexShaderSource)
+    assert.NoError(t, err)
+    
+    err = shader.LoadFragmentShader(validFragmentShaderSource)
+    assert.NoError(t, err)
+    
+    err = shader.LinkProgram()
+    assert.NoError(t, err)
+    
+    shader.Use()
+    
+    location := shader.GetUniformLocation("alpha")
+    assert.Equal(t, int32(0), location)
+    
+    shader.SetUniformFloat(location, 0.5)
+    
+    // Assert
+    mockBackend.AssertExpectations(t)
+    assert.Equal(t, uint32(3), shader.GetProgramID())
 }
 ```
 
-### 課題2: 理解度チェック
+### ステップ6: ビジュアルサンプル実装
 
-1. Rendererインターフェースの設計原則は何ですか？
-2. CommandQueueを使う利点を3つ挙げてください
-3. OpenGLの描画パイプラインの主要なステップを説明してください
+```go
+// examples/phase2-2/main.go
+package main
 
-### 課題3: 拡張実装
+import (
+    "log"
+    "math"
+    "runtime"
+    "time"
+    
+    "github.com/go-gl/gl/v4.1-core/gl"
+    "github.com/go-gl/glfw/v3.3/glfw"
+    "github.com/yourname/tinyengine/internal/renderer"
+)
 
-以下の機能を追加実装してみてください：
+// 三角形の頂点データ（位置 + 色）
+var triangleVertices = []float32{
+    // 位置 (x, y, z)      色 (r, g, b)
+    0.0, 0.5, 0.0,        1.0, 0.0, 0.0, // 上の頂点（赤）
+    -0.5, -0.5, 0.0,      0.0, 1.0, 0.0, // 左下の頂点（緑）
+    0.5, -0.5, 0.0,       0.0, 0.0, 1.0, // 右下の頂点（青）
+}
 
-1. 円形描画機能の추가
-2. 色指定機能の추加
-3. 描画統計情報（FPS、描画コマンド数）の収集
+func main() {
+    log.Println("フェーズ2.2 ビジュアルサンプル: カラフルな三角形表示")
+    log.Println("シェーダーシステムを使用したカラフルな三角形を表示します...")
+    
+    // OpenGL/GLFW初期化
+    if err := initOpenGL(); err != nil {
+        log.Fatalf("OpenGL初期化に失敗しました: %v", err)
+    }
+    defer glfw.Terminate()
+    
+    // ウィンドウ作成
+    window, err := createWindow()
+    if err != nil {
+        log.Fatalf("ウィンドウ作成に失敗しました: %v", err)
+    }
+    defer window.Destroy()
+    
+    // OpenGL設定
+    gl.Viewport(0, 0, 800, 600)
+    
+    // シェーダー作成
+    shader, err := createColoredTriangleShader()
+    if err != nil {
+        log.Fatalf("シェーダー作成に失敗しました: %v", err)
+    }
+    defer shader.Delete()
+    
+    // VAO, VBO作成
+    vao, vbo := createTriangleGeometry()
+    defer deleteGeometry(vao, vbo)
+    
+    log.Println("✅ OpenGL初期化とシェーダー作成が完了しました")
+    log.Println("📱 カラフルな三角形が表示されることを確認してください")
+    log.Println("🎨 上が赤、左下が緑、右下が青のグラデーション三角形")
+    
+    // メインループ（5秒間表示）
+    startTime := time.Now()
+    for !window.ShouldClose() && time.Since(startTime) < 5*time.Second {
+        // 画面クリア
+        gl.ClearColor(0.1, 0.1, 0.1, 1.0)
+        gl.Clear(gl.COLOR_BUFFER_BIT)
+        
+        // シェーダー使用
+        shader.Use()
+        
+        // 時間ベースのアルファ値設定
+        elapsed := float32(time.Since(startTime).Seconds())
+        alpha := 0.5 + 0.5*float32(math.Sin(float64(elapsed*2.0)))
+        alphaLocation := shader.GetUniformLocation("alpha")
+        shader.SetUniformFloat(alphaLocation, alpha)
+        
+        // 三角形描画
+        gl.BindVertexArray(vao)
+        gl.DrawArrays(gl.TRIANGLES, 0, 3)
+        gl.BindVertexArray(0)
+        
+        // バッファスワップとイベント処理
+        window.SwapBuffers()
+        glfw.PollEvents()
+    }
+    
+    log.Println("✅ フェーズ2.2のビジュアルサンプル完了")
+    log.Println("")
+    log.Println("確認項目:")
+    log.Println("- [  ] カラフルな三角形が表示された")
+    log.Println("- [  ] 上の頂点が赤色で表示された")
+    log.Println("- [  ] 左下の頂点が緑色で表示された")
+    log.Println("- [  ] 右下の頂点が青色で表示された")
+    log.Println("- [  ] 三角形にグラデーション効果があった")
+    log.Println("- [  ] 時間と共に明度が変化していた")
+}
 
-## まとめ
+func createColoredTriangleShader() (*renderer.Shader, error) {
+    vertexShaderSource := `#version 410 core
+layout (location = 0) in vec3 aPos;
+layout (location = 1) in vec3 aColor;
 
-この章では、TinyEngineの描画システムを実装しました。学習したポイント：
+out vec3 vertexColor;
 
-- ✅ 描画システムの基本概念と必要性
-- ✅ インターフェース設計とSOLID原則の適用
-- ✅ OpenGLを使った実際の描画実装
-- ✅ コマンドキューによる描画最適化
-- ✅ テスト駆動開発による品質保証
+void main() {
+    gl_Position = vec4(aPos, 1.0);
+    vertexColor = aColor;
+}
+`
 
-次の章では、ゲーム数学システム（ベクトル、行列、変換）を実装していきます。
+    fragmentShaderSource := `#version 410 core
+in vec3 vertexColor;
+out vec4 FragColor;
+
+uniform float alpha;
+
+void main() {
+    FragColor = vec4(vertexColor, alpha);
+}
+`
+
+    shader := renderer.NewShader(renderer.NewRealOpenGLBackend())
+    
+    if err := shader.LoadVertexShader(vertexShaderSource); err != nil {
+        return nil, err
+    }
+    
+    if err := shader.LoadFragmentShader(fragmentShaderSource); err != nil {
+        return nil, err
+    }
+    
+    if err := shader.LinkProgram(); err != nil {
+        return nil, err
+    }
+    
+    return shader, nil
+}
+```
+
+## ビジュアル確認
+
+このフェーズを完了すると、以下が実現できます：
+
+### 期待される結果
+- カラフルな三角形（上:赤、左下:緑、右下:青）が表示される
+- グラデーション効果が美しく表現される
+- 時間と共に明度が変化する（アルファ値のアニメーション）
+- 5秒間表示された後、自動的に終了する
+
+### 確認項目
+- [ ] シェーダーが正常にコンパイル・リンクされる
+- [ ] 頂点属性（位置・色）が正しく設定される
+- [ ] ユニフォーム変数が正しく動作する
+- [ ] 全テストが成功する（OpenGL環境なしでも実行可能）
+- [ ] 依存性注入による設計が理解できる
+
+## 重要な概念の理解
+
+### なぜ依存性注入が重要なのか？
+1. **テスト容易性**: OpenGL環境がなくてもテスト実行可能
+2. **保守性**: OpenGL APIの変更に対応しやすい
+3. **可読性**: 実際のロジックとOpenGL呼び出しを分離
+4. **拡張性**: 他のグラフィックAPI（Vulkan、DirectX）への対応が容易
+
+### シェーダープログラムのライフサイクル
+1. **作成**: CreateShader() でシェーダーオブジェクト作成
+2. **ソース設定**: ShaderSource() でGLSLコード設定
+3. **コンパイル**: CompileShader() でGPUコードにコンパイル
+4. **プログラム作成**: CreateProgram() でシェーダープログラム作成
+5. **アタッチ**: AttachShader() でシェーダーをプログラムに結合
+6. **リンク**: LinkProgram() で実行可能なプログラムを生成
+7. **使用**: UseProgram() でGPUに送信
+8. **削除**: DeleteShader(), DeleteProgram() でリソース解放
+
+## 次のステップ
+
+フェーズ2.2を完了したら、次はフェーズ2.3（基本図形描画）に進みます。ここで実装したシェーダーシステムを使用して、より複雑な図形や効果を描画していきます。
+
+## 理解度チェック
+
+1. 頂点シェーダーとフラグメントシェーダーの役割の違いを説明できますか？
+2. ユニフォーム変数とは何で、なぜ重要なのか理解していますか？
+3. 依存性注入がなぜテストにおいて重要なのか説明できますか？
+4. シェーダープログラムのコンパイル→リンク→使用の流れを理解していますか？
