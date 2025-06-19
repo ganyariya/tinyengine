@@ -1,7 +1,6 @@
 package core
 
 import (
-	"fmt"
 	"time"
 	"github.com/ganyariya/tinyengine/pkg/tinyengine"
 )
@@ -33,12 +32,12 @@ func (e *Engine) SetApplication(app tinyengine.GameObject) {
 // Run はゲームループを開始する
 func (e *Engine) Run() error {
 	if e.application == nil {
-		return fmt.Errorf("アプリケーションが設定されていません")
+		return ErrApplicationNotSet
 	}
 
 	// アプリケーションの初期化
 	if err := e.application.Initialize(); err != nil {
-		return fmt.Errorf("アプリケーションの初期化に失敗: %w", err)
+		return NewEngineError("core", "application initialization", err)
 	}
 
 	e.running = true
@@ -58,7 +57,7 @@ func (e *Engine) Run() error {
 		e.application.Render(nil)
 
 		// フレームレート制限（60FPS）
-		time.Sleep(time.Millisecond * 16)
+		time.Sleep(DefaultFrameTimeMs)
 	}
 
 	// 終了処理

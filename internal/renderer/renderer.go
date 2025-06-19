@@ -39,17 +39,17 @@ func (r *BaseRenderer) DrawPrimitive(primitive interface{}) {
 }
 
 // DrawRectangleColor は色付き矩形を描画する
-func (r *BaseRenderer) DrawRectangleColor(x, y, width, height float32, red, g, b, a float32) {
+func (r *BaseRenderer) DrawRectangleColor(x, y, width, height float32, red, green, blue, alpha float32) {
 	// 基本実装: 何もしない（OpenGLRendererでオーバーライド）
 }
 
 // DrawCircle は円を描画する
-func (r *BaseRenderer) DrawCircle(x, y, radius float32, red, g, b, a float32) {
+func (r *BaseRenderer) DrawCircle(x, y, radius float32, red, green, blue, alpha float32) {
 	// 基本実装: 何もしない（OpenGLRendererでオーバーライド）
 }
 
 // DrawLine は線を描画する
-func (r *BaseRenderer) DrawLine(x1, y1, x2, y2 float32, red, g, b, a float32) {
+func (r *BaseRenderer) DrawLine(x1, y1, x2, y2 float32, red, green, blue, alpha float32) {
 	// 基本実装: 何もしない（OpenGLRendererでオーバーライド）
 }
 

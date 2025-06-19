@@ -11,8 +11,12 @@ import (
 
 // OpenGL設定の定数
 const (
-	OpenGLMajorVersion = 4
-	OpenGLMinorVersion = 1
+	OpenGLMajorVersion    = 4
+	OpenGLMinorVersion    = 1
+	VertexPositionAttrib  = 0
+	VertexPositionSize    = 3
+	FloatSizeBytes        = 4
+	DefaultBufferPoolSize = 100
 )
 
 // デフォルトカラー設定
@@ -50,6 +54,7 @@ type OpenGLRenderer struct {
 	height        int
 	window        *glfw.Window
 	shaderManager *ShaderManager
+	bufferPool    *BufferPool
 }
 
 // NewOpenGLRenderer は新しいOpenGLRendererを作成する
@@ -122,6 +127,7 @@ func NewOpenGLRendererWithWindow(width, height int, title string) (tinyengine.Re
 		height:        height,
 		window:        window,
 		shaderManager: shaderManager,
+		bufferPool:    NewBufferPool(DefaultBufferPoolSize),
 	}
 
 	return renderer, nil
@@ -143,45 +149,9 @@ func (r *OpenGLRenderer) Present() {
 
 // DrawRectangle は矩形を描画する
 func (r *OpenGLRenderer) DrawRectangle(x, y, width, height float32) {
-	// 基本的な矩形描画（頂点データを使用）
-	vertices := []float32{
-		// 位置
-		x, y, // 左下
-		x + width, y, // 右下
-		x + width, y + height, // 右上
-		x, y + height, // 左上
-	}
-
-	indices := []uint32{
-		0, 1, 2, // 最初の三角形
-		2, 3, 0, // 二番目の三角形
-	}
-
-	// VBO, VAO, EBO作成と描画
-	var vao, vbo, ebo uint32
-	gl.GenVertexArrays(1, &vao)
-	gl.GenBuffers(1, &vbo)
-	gl.GenBuffers(1, &ebo)
-
-	gl.BindVertexArray(vao)
-
-	gl.BindBuffer(gl.ARRAY_BUFFER, vbo)
-	gl.BufferData(gl.ARRAY_BUFFER, len(vertices)*4, gl.Ptr(vertices), gl.STATIC_DRAW)
-
-	gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, ebo)
-	gl.BufferData(gl.ELEMENT_ARRAY_BUFFER, len(indices)*4, gl.Ptr(indices), gl.STATIC_DRAW)
-
-	gl.VertexAttribPointer(0, 2, gl.FLOAT, false, 2*4, gl.PtrOffset(0))
-	gl.EnableVertexAttribArray(0)
-
-	// 描画
-	gl.DrawElements(gl.TRIANGLES, int32(len(indices)), gl.UNSIGNED_INT, gl.PtrOffset(0))
-
-	// クリーンアップ
-	gl.BindVertexArray(0)
-	gl.DeleteVertexArrays(1, &vao)
-	gl.DeleteBuffers(1, &vbo)
-	gl.DeleteBuffers(1, &ebo)
+	// より効率的な描画のためにDrawPrimitiveを使用
+	rect := NewRectangle(x, y, width, height, NewColor(1.0, 1.0, 1.0, 1.0))
+	r.DrawPrimitive(rect)
 }
 
 // DrawPrimitive はプリミティブを描画する
@@ -196,22 +166,22 @@ func (r *OpenGLRenderer) DrawPrimitive(primitive interface{}) {
 }
 
 // DrawRectangleColor は色付き矩形を描画する
-func (r *OpenGLRenderer) DrawRectangleColor(x, y, width, height float32, red, g, b, a float32) {
-	color := NewColor(red, g, b, a)
+func (r *OpenGLRenderer) DrawRectangleColor(x, y, width, height float32, red, green, blue, alpha float32) {
+	color := NewColor(red, green, blue, alpha)
 	rect := NewRectangle(x, y, width, height, color)
 	r.DrawPrimitive(rect)
 }
 
 // DrawCircle は円を描画する
-func (r *OpenGLRenderer) DrawCircle(x, y, radius float32, red, g, b, a float32) {
-	color := NewColor(red, g, b, a)
+func (r *OpenGLRenderer) DrawCircle(x, y, radius float32, red, green, blue, alpha float32) {
+	color := NewColor(red, green, blue, alpha)
 	circle := NewCircle(x, y, radius, color)
 	r.DrawPrimitive(circle)
 }
 
 // DrawLine は線を描画する
-func (r *OpenGLRenderer) DrawLine(x1, y1, x2, y2 float32, red, g, b, a float32) {
-	color := NewColor(red, g, b, a)
+func (r *OpenGLRenderer) DrawLine(x1, y1, x2, y2 float32, red, green, blue, alpha float32) {
+	color := NewColor(red, green, blue, alpha)
 	line := NewLine(x1, y1, x2, y2, color)
 	r.DrawPrimitive(line)
 }
@@ -234,11 +204,18 @@ func (r *OpenGLRenderer) drawVertices(vertices []float32, indices []uint32, colo
 		return
 	}
 
-	// VBO, VAO, EBO作成
-	var vao, vbo, ebo uint32
-	gl.GenVertexArrays(1, &vao)
-	gl.GenBuffers(1, &vbo)
-	gl.GenBuffers(1, &ebo)
+	// VBO, VAO, EBO取得（プールから再利用 or 新規作成）
+	vao := r.bufferPool.GetVAO()
+	vbo := r.bufferPool.GetVBO()
+	ebo := r.bufferPool.GetEBO()
+	
+	// defer文でリソースの確実な返却を保証
+	defer func() {
+		gl.BindVertexArray(0)
+		r.bufferPool.ReturnVAO(vao)
+		r.bufferPool.ReturnVBO(vbo)
+		r.bufferPool.ReturnEBO(ebo)
+	}()
 
 	gl.BindVertexArray(vao)
 
@@ -313,12 +290,8 @@ func (r *OpenGLRenderer) drawVertices(vertices []float32, indices []uint32, colo
 
 	// 描画実行
 	gl.DrawElements(drawMode, int32(len(indices)), gl.UNSIGNED_INT, gl.PtrOffset(0))
-
-	// クリーンアップ
-	gl.BindVertexArray(0)
-	gl.DeleteVertexArrays(1, &vao)
-	gl.DeleteBuffers(1, &vbo)
-	gl.DeleteBuffers(1, &ebo)
+	
+	// クリーンアップはdefer文で処理
 }
 
 // GetWindow はGLFWウィンドウを取得する
@@ -328,6 +301,9 @@ func (r *OpenGLRenderer) GetWindow() *glfw.Window {
 
 // Destroy はOpenGLリソースを解放する
 func (r *OpenGLRenderer) Destroy() {
+	if r.bufferPool != nil {
+		r.bufferPool.Destroy()
+	}
 	if r.shaderManager != nil {
 		r.shaderManager.DeleteAllShaders()
 	}

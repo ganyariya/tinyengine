@@ -33,9 +33,28 @@ func (w *Window) Initialize() error {
 	// メインスレッドでGLFWを実行する必要がある
 	runtime.LockOSThread()
 	
-	// GLFW初期化
+	if err := w.initGLFW(); err != nil {
+		return fmt.Errorf("GLFW initialization failed: %w", err)
+	}
+	
+	if err := w.createWindow(); err != nil {
+		glfw.Terminate()
+		return fmt.Errorf("window creation failed: %w", err)
+	}
+	
+	if err := w.initOpenGL(); err != nil {
+		w.Destroy()
+		return fmt.Errorf("OpenGL initialization failed: %w", err)
+	}
+	
+	w.initialized = true
+	return nil
+}
+
+// initGLFW initializes GLFW and sets hints
+func (w *Window) initGLFW() error {
 	if err := glfw.Init(); err != nil {
-		return fmt.Errorf("GLFWの初期化に失敗: %w", err)
+		return err
 	}
 	
 	// OpenGLバージョン設定
@@ -44,26 +63,29 @@ func (w *Window) Initialize() error {
 	glfw.WindowHint(glfw.OpenGLProfile, glfw.OpenGLCoreProfile)
 	glfw.WindowHint(glfw.OpenGLForwardCompatible, glfw.True)
 	
-	// ウィンドウ作成
+	return nil
+}
+
+// createWindow creates the GLFW window
+func (w *Window) createWindow() error {
 	window, err := glfw.CreateWindow(w.config.Width, w.config.Height, w.config.Title, nil, nil)
 	if err != nil {
-		glfw.Terminate()
-		return fmt.Errorf("ウィンドウの作成に失敗: %w", err)
+		return err
 	}
 	
 	w.window = window
 	w.window.MakeContextCurrent()
-	
-	// OpenGL初期化
+	return nil
+}
+
+// initOpenGL initializes OpenGL and sets up VSync
+func (w *Window) initOpenGL() error {
 	if err := gl.Init(); err != nil {
-		w.Destroy()
-		return fmt.Errorf("OpenGLの初期化に失敗: %w", err)
+		return err
 	}
 	
 	// VSync有効化
 	glfw.SwapInterval(1)
-	
-	w.initialized = true
 	return nil
 }
 

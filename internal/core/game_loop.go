@@ -15,8 +15,8 @@ type GameLoop struct {
 func NewGameLoop() *GameLoop {
 	return &GameLoop{
 		lastTime:  time.Now(),
-		targetFPS: 60, // デフォルト60FPS
-		frameTime: 1.0 / 60.0,
+		targetFPS: DefaultTargetFPS,
+		frameTime: DefaultFrameTimeSeconds,
 	}
 }
 
